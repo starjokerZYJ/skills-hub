@@ -268,6 +268,9 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Download workflow artifacts
         uses: actions/download-artifact@v4
         with:
@@ -336,13 +339,25 @@ jobs:
           cat "$tmp_json"
           mv "$tmp_json" updater.json
 
+      - name: Generate release notes from changelog
+        env:
+          TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/extract-changelog.mjs "$TAG" CHANGELOG.md > release-notes.md
+          {
+            echo
+            echo '**⚠️ Install Note:** macOS Gatekeeper workaround (only needed on some macOS versions): `xattr -cr "/Applications/Skills Hub.app"` (https://v2.tauri.app/distribute/#macos).'
+          } >> release-notes.md
+
       - name: Create/Update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           name: Skills Hub ${{ github.ref_name }}
           prerelease: ${{ contains(github.ref_name, '-') }}
-          body: '**⚠️ Install Note:** macOS Gatekeeper workaround (only needed on some macOS versions): `xattr -cr "/Applications/Skills Hub.app"` (https://v2.tauri.app/distribute/#macos).'
+          body_path: release-notes.md
           files: |
             dl/*
             updater.json
