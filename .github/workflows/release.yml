@@ -28,6 +28,14 @@ jobs:
           - os: macos-14
             target: aarch64-apple-darwin
             arch: aarch64
+          # Windows x64 (Intel/AMD)
+          - os: windows-2022
+            target: x86_64-pc-windows-msvc
+            arch: x64
+          # Windows on Arm (aarch64)
+          - os: windows-2022
+            target: aarch64-pc-windows-msvc
+            arch: arm64
 
     steps:
       - name: Checkout
@@ -51,10 +59,19 @@ jobs:
         run: rustup target add ${{ matrix.target }}
 
       - name: Install macOS build deps
+        if: matrix.os == 'macos-14'
         shell: bash
         run: |
           set -euxo pipefail
           brew install pkg-config cmake
+
+      - name: Install Windows build deps
+        if: matrix.os == 'windows-2022'
+        shell: bash
+        run: |
+          set -euxo pipefail
+          choco install -y webview4
+          rustup target add ${{ matrix.target }}
 
       - name: Install frontend deps
         run: npm ci
@@ -165,6 +182,7 @@ jobs:
           fi
 
       - name: Build Tauri App (macOS)
+        if: matrix.os == 'macos-14'
         # updater 产物（*.tar.gz/*.sig）是基于 .app bundle 生成的，因此必须包含 app
         shell: bash
         run: |
@@ -176,6 +194,14 @@ jobs:
             unset APPLE_SIGNING_IDENTITY
           fi
           npm run tauri:build -- --target ${{ matrix.target }} --bundles app,dmg
+
+      - name: Build Tauri App (Windows)
+        if: matrix.os == 'windows-2022'
+        # Windows 产物：包含 app bundle（用于 updater）和 nsis 安装程序
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run tauri:build -- --target ${{ matrix.target }} --bundles app,nsis
 
       - name: Verify codesign (optional)
         shell: bash
@@ -196,6 +222,7 @@ jobs:
           codesign --verify --deep --strict --verbose=4 "$APP_PATH"
 
       - name: Prepare macOS Assets
+        if: matrix.os == 'macos-14'
         shell: bash
         run: |
           set -euo pipefail
@@ -250,6 +277,62 @@ jobs:
             echo "⚠️ 未找到 macOS .dmg（可选）" >&2
           fi
 
+      - name: Prepare Windows Assets
+        if: matrix.os == 'windows-2022'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p release-assets
+          VERSION="${GITHUB_REF_NAME}" # e.g. v0.1.4
+          ARCH="${{ matrix.arch }}"
+          TARGET="${{ matrix.target }}"
+
+          # 产物路径在不同 target 下可能不同：优先 target/<triple>/...，兜底 target/release/...
+          BUNDLE_DIRS=(
+            "src-tauri/target/${TARGET}/release/bundle"
+            "src-tauri/target/release/bundle"
+          )
+
+          TAR_GZ=""
+          EXE=""
+          for dir in "${BUNDLE_DIRS[@]}"; do
+            if [ -d "${dir}" ]; then
+              if [ -z "${TAR_GZ}" ]; then
+                TAR_GZ="$(find "${dir}" -type f -name "*.tar.gz" | head -n 1 || true)"
+              fi
+              if [ -z "${EXE}" ]; then
+                EXE="$(find "${dir}" -type f -name "*.exe" | head -n 1 || true)"
+              fi
+            fi
+          done
+
+          if [ -z "${TAR_GZ}" ]; then
+            echo "❌ 未找到 *.tar.gz updater 产物（target=${TARGET}, arch=${ARCH}）。请确认 `src-tauri/tauri.conf.json` 已设置 `bundle.createUpdaterArtifacts=true`，且构建包含 `--bundles app`。" >&2
+            for dir in "${BUNDLE_DIRS[@]}"; do
+              echo "---- list: ${dir}" >&2
+              ls -la "${dir}" 2>/dev/null || true
+              find "${dir}" -maxdepth 6 -type f 2>/dev/null | head -n 200 >&2 || true
+            done
+            exit 1
+          fi
+
+          if [ ! -f "${TAR_GZ}.sig" ]; then
+            echo "❌ 未找到 updater 签名文件：${TAR_GZ}.sig" >&2
+            exit 1
+          fi
+
+          NEW_TAR_GZ="Skills-Hub-${VERSION}-Windows-${ARCH}.tar.gz"
+          cp "${TAR_GZ}" "release-assets/${NEW_TAR_GZ}"
+          cp "${TAR_GZ}.sig" "release-assets/${NEW_TAR_GZ}.sig"
+
+          if [ -n "${EXE}" ]; then
+            NEW_EXE="Skills-Hub-${VERSION}-Windows-${ARCH}.exe"
+            cp "${EXE}" "release-assets/${NEW_EXE}"
+          else
+            echo "⚠️ 未找到 Windows .exe（可选）" >&2
+          fi
+
       - name: List prepared assets
         shell: bash
         run: ls -la release-assets || true
@@ -292,6 +375,8 @@ jobs:
 
           mac_arm_url=""; mac_arm_sig=""
           mac_x64_url=""; mac_x64_sig=""
+          win_arm_url=""; win_arm_sig=""
+          win_x64_url=""; win_x64_sig=""
 
           ls -la dl || true
 
@@ -306,11 +391,15 @@ jobs:
                 mac_arm_url="$url"; mac_arm_sig="$sig_content";;
               *-macOS-x86_64.tar.gz)
                 mac_x64_url="$url"; mac_x64_sig="$sig_content";;
+              *-Windows-arm64.tar.gz)
+                win_arm_url="$url"; win_arm_sig="$sig_content";;
+              *-Windows-x64.tar.gz)
+                win_x64_url="$url"; win_x64_sig="$sig_content";;
             esac
           done
 
-          if [ -z "${mac_arm_url:-}" ] && [ -z "${mac_x64_url:-}" ]; then
-            echo "❌ 未找到任何 macOS updater 签名（dl/*.sig）; 请确认构建产物包含 *.tar.gz.sig" >&2
+          if [ -z "${mac_arm_url:-}" ] && [ -z "${mac_x64_url:-}" ] && [ -z "${win_x64_url:-}" ] && [ -z "${win_arm_url:-}" ]; then
+            echo "❌ 未找到任何平台的 updater 签名（dl/*.sig）; 请确认构建产物包含 *.tar.gz.sig" >&2
             exit 1
           fi
 
@@ -332,6 +421,16 @@ jobs:
               echo "    \"darwin-x86_64\": {\"signature\": \"$mac_x64_sig\", \"url\": \"$mac_x64_url\"}"
               first=0
             fi
+            if [ -n "${win_x64_url:-}" ] && [ -n "${win_x64_sig:-}" ]; then
+              [ $first -eq 0 ] && echo ','
+              echo "    \"windows-x64\": {\"signature\": \"$win_x64_sig\", \"url\": \"$win_x64_url\"}"
+              first=0
+            fi
+            if [ -n "${win_arm_url:-}" ] && [ -n "${win_arm_sig:-}" ]; then
+              [ $first -eq 0 ] && echo ','
+              echo "    \"windows-arm64\": {\"signature\": \"$win_arm_sig\", \"url\": \"$win_arm_url\"}"
+              first=0
+            fi
             echo '  }'
             echo '}'
           } > "$tmp_json"
@@ -348,7 +447,9 @@ jobs:
           node scripts/extract-changelog.mjs "$TAG" CHANGELOG.md > release-notes.md
           {
             echo
-            echo '**⚠️ Install Note:** macOS Gatekeeper workaround (only needed on some macOS versions): `xattr -cr "/Applications/Skills Hub.app"` (https://v2.tauri.app/distribute/#macos).'
+            echo '**Windows Note:** Windows SmartScreen may show a warning during installation. This is normal for unsigned executables. The application is safe to use.'
+            echo
+            echo '**macOS Note:** macOS Gatekeeper workaround (only needed on some macOS versions): `xattr -cr "/Applications/Skills Hub.app"` (https://v2.tauri.app/distribute/#macos).'
           } >> release-notes.md
 
       - name: Create/Update GitHub Release
