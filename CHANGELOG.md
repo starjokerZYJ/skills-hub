@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ## [0.2.0] - 2026-02-01
 
 ### Added
+- **Windows platform support**: Full support for Windows build and release (thanks @jrtxio [PR#6](https://github.com/qufei1993/skills-hub/pull/6)).
 - Support and display for many new tools (e.g., Kimi Code CLI, Augment, OpenClaw, Cline, CodeBuddy, Command Code, Continue, Crush, Junie, iFlow CLI, Kiro CLI, Kode, MCPJam, Mistral Vibe, Mux, OpenClaude IDE, OpenHands, Pi, Qoder, Qwen Code, Trae/Trae CN, Zencoder, Neovate, Pochi, AdaL).
 - UI confirmation and linked selection for tools that share the same global skills directory.
 - Local import multi-skill discovery aligned with Git rules, with a selection list and invalid-item reasons.
