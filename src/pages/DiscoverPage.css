@@ -1,0 +1,177 @@
+.discover-page {
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    height: 100%;
+}
+
+/* Search Bar */
+.discover-search {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+
+.search-input-wrap {
+    flex: 1;
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.search-input-wrap .search-icon {
+    position: absolute;
+    left: 14px;
+    color: var(--text-tertiary);
+    pointer-events: none;
+}
+
+.discover-search .search-input {
+    width: 100%;
+    padding: 12px 12px 12px 44px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-subtle);
+    background: var(--bg-element);
+    color: var(--text-primary);
+    font-size: 14px;
+    transition: all 0.2s;
+}
+
+.discover-search .search-input:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
+.discover-search .search-input::placeholder {
+    color: var(--text-tertiary);
+}
+
+/* Powered by */
+.discover-powered {
+    font-size: 12px;
+    color: var(--text-tertiary);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.discover-powered a {
+    color: var(--accent-primary);
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.discover-powered a:hover {
+    text-decoration: underline;
+}
+
+/* Results */
+.discover-results {
+    flex: 1;
+    overflow-y: auto;
+}
+
+.discover-loading,
+.discover-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    height: 300px;
+    color: var(--text-tertiary);
+}
+
+.discover-empty svg {
+    opacity: 0.3;
+}
+
+/* Registry Grid */
+.registry-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+}
+
+/* Registry Card */
+.registry-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    transition: all 0.2s;
+}
+
+.registry-card:hover {
+    border-color: var(--border-strong);
+    box-shadow: var(--shadow-md);
+}
+
+.registry-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.registry-name {
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 15px;
+}
+
+.registry-link {
+    color: var(--text-tertiary);
+    transition: color 0.2s;
+}
+
+.registry-link:hover {
+    color: var(--accent-primary);
+}
+
+.registry-repo {
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+.registry-cmd {
+    background: var(--bg-element);
+    border-radius: var(--radius-sm);
+    padding: 8px 10px;
+    font-size: 11px;
+    overflow: hidden;
+}
+
+.registry-cmd code {
+    font-family: 'Monaco', 'Menlo', monospace;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: block;
+}
+
+.registry-install-btn {
+    margin-top: auto;
+    width: 100%;
+    justify-content: center;
+}
+
+/* Spinner Animation */
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.spinner {
+    animation: spin 1s linear infinite;
+}

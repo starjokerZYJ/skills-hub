@@ -1,24 +1,25 @@
 import { memo } from 'react'
-import { Plus, Settings } from 'lucide-react'
-import type { TFunction } from 'i18next'
+import { Plus, Settings, Compass } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { useNavigate, useLocation } from 'react-router-dom'
+import { useAppStore } from '../../stores/useAppStore'
 
-type HeaderProps = {
-  language: string
-  loading: boolean
-  onToggleLanguage: () => void
-  onOpenSettings: () => void
-  onOpenAdd: () => void
-  t: TFunction
-}
+// Header now self-contained with tabs
+const Header = () => {
+  const { t } = useTranslation()
+  const navigate = useNavigate()
+  const location = useLocation()
+  const { language, setLanguage, openModal, isLoading } = useAppStore()
 
-const Header = ({
-  language,
-  loading,
-  onToggleLanguage,
-  onOpenSettings,
-  onOpenAdd,
-  t,
-}: HeaderProps) => {
+  const toggleLanguage = () => {
+    setLanguage(language === 'en' ? 'zh' : 'en')
+  }
+
+  const isActive = (path: string) => {
+    if (path === '/') return location.pathname === '/'
+    return location.pathname.startsWith(path)
+  }
+
   return (
     <header className="skills-header">
       <div className="brand-area">
@@ -28,18 +29,36 @@ const Header = ({
           <div className="brand-subtitle">{t('subtitle')}</div>
         </div>
       </div>
+
+      {/* Navigation Tabs */}
+      <nav className="header-tabs">
+        <button
+          className={`tab-btn ${isActive('/') ? 'active' : ''}`}
+          onClick={() => navigate('/')}
+        >
+          {t('nav.mySkills')}
+        </button>
+        <button
+          className={`tab-btn ${isActive('/discover') ? 'active' : ''}`}
+          onClick={() => navigate('/discover')}
+        >
+          <Compass size={16} />
+          {t('nav.discover')}
+        </button>
+      </nav>
+
       <div className="header-actions">
-        <button className="lang-btn" type="button" onClick={onToggleLanguage}>
+        <button className="lang-btn" type="button" onClick={toggleLanguage}>
           {language === 'en' ? t('languageShort.en') : t('languageShort.zh')}
         </button>
-        <button className="icon-btn" type="button" onClick={onOpenSettings}>
+        <button className="icon-btn" type="button" onClick={() => openModal('settings')}>
           <Settings size={18} />
         </button>
         <button
           className="btn btn-primary"
           type="button"
-          onClick={onOpenAdd}
-          disabled={loading}
+          onClick={() => openModal('addSkill')}
+          disabled={isLoading}
         >
           <Plus size={16} />
           {t('newSkill')}

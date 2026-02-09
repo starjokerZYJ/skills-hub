@@ -11,6 +11,7 @@ use super::central_repo::{ensure_central_repo, resolve_central_repo_path};
 use super::content_hash::hash_dir;
 use super::git_fetcher::clone_or_pull;
 use super::skill_store::{SkillRecord, SkillStore};
+use super::skill_metadata::SkillMetadata;
 use super::sync_engine::copy_dir_recursive;
 use super::sync_engine::sync_dir_copy_with_overwrite;
 use super::tool_adapters::adapter_by_key;
@@ -21,6 +22,61 @@ pub struct InstallResult {
     pub name: String,
     pub central_path: PathBuf,
     pub content_hash: Option<String>,
+}
+
+/// Detect if a directory contains a .git folder and extract the origin remote URL.
+/// If the path is a symlink, resolves it to the real path first.
+/// Returns (source_type, source_ref, source_revision) tuple.
+fn detect_git_origin(source_path: &Path) -> (String, Option<String>, Option<String>) {
+    // Resolve symlinks to get the real path
+    let resolved_path = std::fs::canonicalize(source_path).unwrap_or_else(|_| source_path.to_path_buf());
+
+    let git_dir = resolved_path.join(".git");
+    if !git_dir.exists() {
+        return (
+            "local".to_string(),
+            Some(source_path.to_string_lossy().to_string()),
+            None,
+        );
+    }
+
+    // Try to open the git repository and get origin URL
+    match git2::Repository::open(&resolved_path) {
+        Ok(repo) => {
+            // Get origin remote URL
+            let origin_url = repo
+                .find_remote("origin")
+                .ok()
+                .and_then(|remote| remote.url().map(|s| s.to_string()));
+
+            // Get current HEAD commit hash
+            let revision = repo
+                .head()
+                .ok()
+                .and_then(|head| head.peel_to_commit().ok())
+                .map(|commit| commit.id().to_string());
+
+            if let Some(url) = origin_url {
+                // It's a git repo with a valid origin
+                ("git".to_string(), Some(url), revision)
+            } else {
+                // Git repo but no origin remote, treat as local
+                (
+                    "local".to_string(),
+                    Some(source_path.to_string_lossy().to_string()),
+                    None,
+                )
+            }
+        }
+        Err(_) => {
+            // Failed to open as git repo, treat as local
+            (
+                "local".to_string(),
+                Some(source_path.to_string_lossy().to_string()),
+                None,
+            )
+        }
+    }
 }
 
 pub fn install_local_skill<R: tauri::Runtime>(
@@ -54,12 +110,17 @@ pub fn install_local_skill<R: tauri::Runtime>(
     let now = now_ms();
     let content_hash = compute_content_hash(&central_path);
 
+    let metadata = SkillMetadata::load(&central_path);
+
+    // Smart detection: check if source has .git directory with valid origin
+    let (source_type, source_ref, source_revision) = detect_git_origin(source_path);
+
     let record = SkillRecord {
         id: Uuid::new_v4().to_string(),
         name,
-        source_type: "local".to_string(),
-        source_ref: Some(source_path.to_string_lossy().to_string()),
-        source_revision: None,
+        source_type,
+        source_ref,
+        source_revision,
         central_path: central_path.to_string_lossy().to_string(),
         content_hash: content_hash.clone(),
         created_at: now,
@@ -67,6 +128,7 @@ pub fn install_local_skill<R: tauri::Runtime>(
         last_sync_at: None,
         last_seen_at: now,
         status: "ok".to_string(),
+        metadata,
     };
 
     store.upsert_skill(&record)?;
@@ -146,6 +208,8 @@ pub fn install_git_skill<R: tauri::Runtime>(
     let now = now_ms();
     let content_hash = compute_content_hash(&central_path);
 
+    let metadata = SkillMetadata::load(&central_path);
+
     let record = SkillRecord {
         id: Uuid::new_v4().to_string(),
         name,
@@ -159,6 +223,7 @@ pub fn install_git_skill<R: tauri::Runtime>(
         last_sync_at: None,
         last_seen_at: now,
         status: "ok".to_string(),
+        metadata,
     };
 
     store.upsert_skill(&record)?;
@@ -424,6 +489,8 @@ pub fn update_managed_skill_from_source<R: tauri::Runtime>(
     let content_hash = compute_content_hash(&central_path);
 
     // Update DB skill row.
+    let metadata = SkillMetadata::load(&central_path);
+
     let updated = SkillRecord {
         id: record.id.clone(),
         name: record.name.clone(),
@@ -437,6 +504,7 @@ pub fn update_managed_skill_from_source<R: tauri::Runtime>(
         last_sync_at: record.last_sync_at,
         last_seen_at: now,
         status: "ok".to_string(),
+        metadata,
     };
     store.upsert_skill(&updated)?;
 
@@ -736,6 +804,8 @@ pub fn install_git_skill_from_selection<R: tauri::Runtime>(
 
     let now = now_ms();
     let content_hash = compute_content_hash(&central_path);
+    let metadata = SkillMetadata::load(&central_path);
+
     let record = SkillRecord {
         id: Uuid::new_v4().to_string(),
         name: display_name,
@@ -749,6 +819,7 @@ pub fn install_git_skill_from_selection<R: tauri::Runtime>(
         last_sync_at: None,
         last_seen_at: now,
         status: "ok".to_string(),
+        metadata,
     };
     store.upsert_skill(&record)?;
 

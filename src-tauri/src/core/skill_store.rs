@@ -8,7 +8,7 @@ const DB_FILE_NAME: &str = "skills_hub.db";
 const LEGACY_APP_IDENTIFIERS: &[&str] = &["com.tauri.dev", "com.tauri.dev.skillshub"];
 
 // Schema versioning: bump when making changes and add a migration step.
-const SCHEMA_VERSION: i32 = 1;
+const SCHEMA_VERSION: i32 = 2;
 
 // Minimal schema for MVP: skills, skill_targets, settings, discovered_skills(optional).
 const SCHEMA_V1: &str = r#"
@@ -79,6 +79,7 @@ pub struct SkillRecord {
     pub last_sync_at: Option<i64>,
     pub last_seen_at: i64,
     pub status: String,
+    pub metadata: Option<crate::core::skill_metadata::SkillMetadata>,
 }
 
 #[derive(Clone, Debug)]
@@ -110,7 +111,13 @@ impl SkillStore {
             let user_version: i32 = conn.query_row("PRAGMA user_version;", [], |row| row.get(0))?;
             if user_version == 0 {
                 conn.execute_batch(SCHEMA_V1)?;
+                // V1 -> V2: Add metadata column
+                conn.execute_batch("ALTER TABLE skills ADD COLUMN metadata TEXT NULL;")?;
                 conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
+            } else if user_version == 1 {
+                 // V1 -> V2
+                 conn.execute_batch("ALTER TABLE skills ADD COLUMN metadata TEXT NULL;")?;
+                 conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
             } else if user_version > SCHEMA_VERSION {
                 anyhow::bail!(
                     "database schema version {} is newer than app supports {}",
@@ -155,13 +162,18 @@ impl SkillStore {
 
     pub fn upsert_skill(&self, record: &SkillRecord) -> Result<()> {
         self.with_conn(|conn| {
+            let metadata_json = match &record.metadata {
+                Some(m) => Some(serde_json::to_string(m)?),
+                None => None,
+            };
+
             conn.execute(
                 "INSERT INTO skills (
           id, name, source_type, source_ref, source_revision, central_path, content_hash,
-          created_at, updated_at, last_sync_at, last_seen_at, status
+          created_at, updated_at, last_sync_at, last_seen_at, status, metadata
         ) VALUES (
           ?1, ?2, ?3, ?4, ?5, ?6, ?7,
-          ?8, ?9, ?10, ?11, ?12
+          ?8, ?9, ?10, ?11, ?12, ?13
         )
         ON CONFLICT(id) DO UPDATE SET
           name = excluded.name,
@@ -174,7 +186,8 @@ impl SkillStore {
           updated_at = excluded.updated_at,
           last_sync_at = excluded.last_sync_at,
           last_seen_at = excluded.last_seen_at,
-          status = excluded.status",
+          status = excluded.status,
+          metadata = excluded.metadata",
                 params![
                     record.id,
                     record.name,
@@ -187,7 +200,8 @@ impl SkillStore {
                     record.updated_at,
                     record.last_sync_at,
                     record.last_seen_at,
-                    record.status
+                    record.status,
+                    metadata_json
                 ],
             )?;
             Ok(())
@@ -227,11 +241,17 @@ impl SkillStore {
         self.with_conn(|conn| {
             let mut stmt = conn.prepare(
         "SELECT id, name, source_type, source_ref, source_revision, central_path, content_hash,
-                created_at, updated_at, last_sync_at, last_seen_at, status
+                created_at, updated_at, last_sync_at, last_seen_at, status, metadata
          FROM skills
          ORDER BY updated_at DESC",
       )?;
             let rows = stmt.query_map([], |row| {
+                let metadata_json: Option<String> = row.get(12)?;
+                let metadata = match metadata_json {
+                    Some(s) => serde_json::from_str(&s).ok(),
+                    None => None,
+                };
+
                 Ok(SkillRecord {
                     id: row.get(0)?,
                     name: row.get(1)?,
@@ -245,6 +265,7 @@ impl SkillStore {
                     last_sync_at: row.get(9)?,
                     last_seen_at: row.get(10)?,
                     status: row.get(11)?,
+                    metadata,
                 })
             })?;
 
@@ -260,13 +281,18 @@ impl SkillStore {
         self.with_conn(|conn| {
             let mut stmt = conn.prepare(
         "SELECT id, name, source_type, source_ref, source_revision, central_path, content_hash,
-                created_at, updated_at, last_sync_at, last_seen_at, status
+                created_at, updated_at, last_sync_at, last_seen_at, status, metadata
          FROM skills
          WHERE id = ?1
          LIMIT 1",
       )?;
             let mut rows = stmt.query(params![skill_id])?;
             if let Some(row) = rows.next()? {
+                let metadata_json: Option<String> = row.get(12)?;
+                let metadata = match metadata_json {
+                    Some(s) => serde_json::from_str(&s).ok(),
+                    None => None,
+                };
                 Ok(Some(SkillRecord {
                     id: row.get(0)?,
                     name: row.get(1)?,
@@ -280,6 +306,7 @@ impl SkillStore {
                     last_sync_at: row.get(9)?,
                     last_seen_at: row.get(10)?,
                     status: row.get(11)?,
+                    metadata,
                 }))
             } else {
                 Ok(None)

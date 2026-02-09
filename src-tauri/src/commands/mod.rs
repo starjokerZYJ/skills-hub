@@ -786,6 +786,132 @@ fn get_managed_skills_impl(store: &SkillStore) -> Result<Vec<ManagedSkillDto>, S
         .collect())
 }
 
+/// Read the SKILL.md content from a skill's central_path
+#[tauri::command]
+pub async fn read_skill_content(central_path: String) -> Result<String, String> {
+    let skill_md_path = std::path::Path::new(&central_path).join("SKILL.md");
+    if !skill_md_path.exists() {
+        return Ok(String::new());
+    }
+    std::fs::read_to_string(&skill_md_path)
+        .map_err(|e| format!("Failed to read SKILL.md: {}", e))
+}
+
+/// Skill from the skills.sh registry
+#[derive(Debug, Clone, Serialize)]
+pub struct RegistrySkill {
+    pub name: String,
+    pub owner: String,
+    pub repo: String,
+    pub subpath: String,  // Actual directory path in the repo
+    pub url: String,
+    pub install_cmd: String,
+}
+
+/// Search the skills.sh registry using npx skills find
+#[tauri::command]
+pub async fn search_skills_registry(query: String) -> Result<Vec<RegistrySkill>, String> {
+    use std::process::Command;
+    use regex::Regex;
+    
+    // Function to strip ANSI escape codes
+    fn strip_ansi_codes(s: &str) -> String {
+        // Match ANSI escape sequences: ESC[ ... m
+        let re = Regex::new(r"\x1b\[[0-9;]*m").unwrap();
+        re.replace_all(s, "").to_string()
+    }
+    
+    let output = Command::new("npx")
+        .args(["skills", "find", &query])
+        .output()
+        .map_err(|e| format!("Failed to run npx skills find: {}", e))?;
+    
+    let stdout_raw = String::from_utf8_lossy(&output.stdout);
+    let stdout = strip_ansi_codes(&stdout_raw);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    
+    // Parse the output format:
+    // Install with npx skills add <owner/repo@skill>
+    // 
+    // vercel-labs/agent-skills@vercel-react-best-practices
+    // └ https://skills.sh/vercel-labs/agent-skills/vercel-react-best-practices
+    
+    let mut skills = Vec::new();
+    let lines: Vec<&str> = stdout.lines().collect();
+    
+    for (i, line) in lines.iter().enumerate() {
+        // Look for lines like "vercel-labs/agent-skills@skill-name"
+        if line.contains('/') && line.contains('@') && !line.starts_with("Install") && !line.starts_with("└") {
+            let line = line.trim();
+            // Parse owner/repo@skill-name
+            if let Some(at_pos) = line.find('@') {
+                let owner_repo = &line[..at_pos];
+                let skill_name = &line[at_pos + 1..];
+                
+                if let Some(slash_pos) = owner_repo.find('/') {
+                    let owner = &owner_repo[..slash_pos];
+                    let repo = &owner_repo[slash_pos + 1..];
+                    
+                    // Get the URL from the next line if available
+                    let url = if i + 1 < lines.len() {
+                        let next_line = lines[i + 1].trim();
+                        if next_line.starts_with("└") {
+                            next_line.trim_start_matches("└").trim().to_string()
+                        } else {
+                            format!("https://skills.sh/{}/{}/{}", owner, repo, skill_name)
+                        }
+                    } else {
+                        format!("https://skills.sh/{}/{}/{}", owner, repo, skill_name)
+                    };
+                    
+                    // Extract subpath from URL (last segment after owner/repo)
+                    // URL format: https://skills.sh/owner/repo/subpath
+                    let subpath = url
+                        .trim_end_matches('/')
+                        .rsplit('/')
+                        .next()
+                        .unwrap_or(skill_name)
+                        .to_string();
+                    
+                    skills.push(RegistrySkill {
+                        name: skill_name.to_string(),
+                        owner: owner.to_string(),
+                        repo: repo.to_string(),
+                        subpath,
+                        url,
+                        install_cmd: format!("npx skills add {}@{}", owner_repo, skill_name),
+                    });
+                }
+            }
+        }
+    }
+    
+    if skills.is_empty() && !stderr.is_empty() {
+        return Err(format!("Search failed: {}", stderr));
+    }
+    
+    Ok(skills)
+}
+
+/// Install a skill from the registry using npx skills add
+#[tauri::command]
+pub async fn install_from_registry(package: String) -> Result<String, String> {
+    use std::process::Command;
+    
+    let output = Command::new("npx")
+        .args(["skills", "add", &package, "-g", "-y"])
+        .output()
+        .map_err(|e| format!("Failed to run npx skills add: {}", e))?;
+    
+    if output.status.success() {
+        Ok(format!("Successfully installed {}", package))
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(format!("Installation failed: {}", stderr))
+    }
+}
+
 #[cfg(test)]
 #[path = "tests/commands.rs"]
 mod tests;
+

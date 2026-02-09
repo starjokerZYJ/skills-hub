@@ -24,6 +24,15 @@ export type ToolOption = {
   label: string
 }
 
+export type SkillMetadata = {
+  name: string
+  version: string
+  description?: string | null
+  author?: string | null
+  tags?: string[]
+  dependencies?: string[]
+}
+
 export type ManagedSkill = {
   id: string
   name: string
@@ -41,6 +50,7 @@ export type ManagedSkill = {
     target_path: string
     synced_at?: number | null
   }[]
+  metadata?: SkillMetadata | null
 }
 
 export type GitSkillCandidate = {
@@ -84,3 +94,22 @@ export type UpdateResultDto = {
   source_revision?: string | null
   updated_targets: string[]
 }
+
+export type RepoSummary = {
+  full_name: string
+  html_url: string
+  description: string | null
+  stars: number
+  updated_at: string
+  clone_url: string
+}
+
+export type RegistrySkill = {
+  name: string
+  owner: string
+  repo: string
+  subpath: string  // Actual directory path in the repo
+  url: string
+  install_cmd: string
+}
+

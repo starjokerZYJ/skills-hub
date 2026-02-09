@@ -23,7 +23,15 @@ const FilterBar = ({
 }: FilterBarProps) => {
   return (
     <div className="filter-bar">
-      <div className="filter-title">{t('allSkills')}</div>
+      <div className="search-container">
+        <Search size={14} className="search-icon-abs" />
+        <input
+          className="search-input"
+          value={searchQuery}
+          onChange={(event) => onSearchChange(event.target.value)}
+          placeholder={t('searchPlaceholder')}
+        />
+      </div>
       <div className="filter-actions">
         <button className="btn btn-secondary sort-btn" type="button">
           <span className="sort-label">{t('filterSort')}:</span>
@@ -38,15 +46,6 @@ const FilterBar = ({
             <option value="name">{t('sortName')}</option>
           </select>
         </button>
-        <div className="search-container">
-          <Search size={16} className="search-icon-abs" />
-          <input
-            className="search-input"
-            value={searchQuery}
-            onChange={(event) => onSearchChange(event.target.value)}
-            placeholder={t('searchPlaceholder')}
-          />
-        </div>
         <button
           className="btn btn-secondary"
           type="button"

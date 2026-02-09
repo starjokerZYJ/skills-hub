@@ -1,6 +1,6 @@
 # Skills Hub (Tauri Desktop)
 
-A cross-platform desktop app (Tauri + React) to manage Agent Skills in one place and sync them to multiple AI coding tools’ global skills directories (prefer symlink/junction, fallback to copy) — “Install once, sync everywhere”.
+A cross-platform desktop app (Tauri + React) to manage Agent Skills in one place and sync them to multiple AI coding tools' global skills directories (prefer symlink/junction, fallback to copy) — "Install once, sync everywhere".
 
 ## Documentation
 
@@ -14,11 +14,13 @@ Design docs:
 
 ## Key Features
 
-- Unified view: managed skills and per-tool activation status
-- Onboarding migration: scan existing skills in installed tools, import into the Central Repo, and sync
-- Import sources: local folder / Git URL (including multi-skill repo selection)
-- Update: refresh from source; propagate updates to copy-mode targets
-- New tool detection: detect newly installed tools and prompt to sync managed skills
+- **Unified View**: Managed skills and per-tool activation status
+- **Skills Discovery**: Search and install skills from [skills.sh](https://skills.sh) registry via `npx skills find`
+- **Onboarding Migration**: Scan existing skills in installed tools, import into the Central Repo, and sync
+- **Import Sources**: Local folder / Git URL (including multi-skill repo selection)
+- **Update**: Refresh from source; propagate updates to copy-mode targets
+- **New Tool Detection**: Detect newly installed tools and prompt to sync managed skills
+- **Multi-language**: English and Chinese interface support
 
 ![Skills Hub](docs/assets/home-example.png)
 
@@ -118,7 +120,7 @@ cargo test
 - Why is Cursor sync always copy? Cursor currently does not support symlink/junction-based skill directories, so Skills Hub forces directory copy when syncing to Cursor.
 - Why does sync sometimes fall back to copy? Skills Hub prefers symlink/junction, but on some systems (especially Windows) symlinks may be restricted; in that case it falls back to directory copy.
 - What does `TARGET_EXISTS|...` mean? The target folder already exists and the operation did not overwrite it (default is non-destructive). Remove the existing folder or retry with the appropriate overwrite flow.
-- macOS Gatekeeper note (unsigned/notarized builds, may vary by macOS version): if you see “damaged” or “unverified developer”, run `xattr -cr "/Applications/Skills Hub.app"` (https://v2.tauri.app/distribute/#macos).
+- macOS Gatekeeper note (unsigned/notarized builds, may vary by macOS version): if you see "damaged" or "unverified developer", run `xattr -cr "/Applications/Skills Hub.app"` (https://v2.tauri.app/distribute/#macos).
 
 ## Supported Platforms
 

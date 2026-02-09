@@ -1,0 +1,103 @@
+.stats-cards {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    padding: 20px 24px 16px;
+}
+
+.stat-card {
+    background: var(--bg-card);
+    backdrop-filter: var(--backdrop-blur);
+    -webkit-backdrop-filter: var(--backdrop-blur);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    padding: 16px 20px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    transition: all 0.2s ease;
+}
+
+.stat-card:hover {
+    background: var(--bg-card-hover);
+    border-color: var(--border-strong);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+}
+
+.stat-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+/* Skills card - Indigo */
+.stat-skills .stat-icon {
+    background: var(--accent-gradient);
+    color: white;
+}
+
+/* Tools card - Purple */
+.stat-tools .stat-icon {
+    background: linear-gradient(135deg, #8b5cf6, #a855f7);
+    color: white;
+}
+
+/* Updates card - neutral or warning */
+.stat-updates .stat-icon {
+    background: var(--bg-element);
+    color: var(--text-secondary);
+}
+
+.stat-updates.has-updates .stat-icon {
+    background: linear-gradient(135deg, #f59e0b, #f97316);
+    color: white;
+}
+
+.stat-content {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.stat-value {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1;
+    letter-spacing: -0.02em;
+}
+
+.stat-value .stat-total {
+    font-size: 16px;
+    font-weight: 500;
+    color: var(--text-tertiary);
+    margin-left: 2px;
+}
+
+.stat-label {
+    font-size: 13px;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+/* Responsive - stack on small screens */
+@media (max-width: 768px) {
+    .stats-cards {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 1024px) and (min-width: 769px) {
+    .stats-cards {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .stat-card:last-child {
+        grid-column: span 2;
+    }
+}

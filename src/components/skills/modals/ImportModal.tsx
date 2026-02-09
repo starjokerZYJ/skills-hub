@@ -1,39 +1,139 @@
-import { memo } from 'react'
-import { Download } from 'lucide-react'
-import type { TFunction } from 'i18next'
+import { memo, useState, useEffect } from 'react'
+import { Download, Search } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { invoke } from '@tauri-apps/api/core'
+import { useAppStore } from '../../../stores/useAppStore'
+import { useSkillsManager } from '../../../hooks/useSkillsManager'
 import type { OnboardingPlan } from '../types'
 
 type ImportModalProps = {
-  open: boolean
-  loading: boolean
-  plan: OnboardingPlan
-  selected: Record<string, boolean>
-  variantChoice: Record<string, string>
-  onRequestClose: () => void
-  onToggleAll: (checked: boolean) => void
-  onToggleGroup: (groupName: string, checked: boolean) => void
-  onSelectVariant: (groupName: string, path: string) => void
-  onImport: () => void
-  t: TFunction
+  onClose: () => void
+  onFinish: () => void
 }
 
-const ImportModal = ({
-  open,
-  loading,
-  plan,
-  selected,
-  variantChoice,
-  onRequestClose,
-  onToggleAll,
-  onToggleGroup,
-  onSelectVariant,
-  onImport,
-  t,
-}: ImportModalProps) => {
-  if (!open) return null
+const ImportModal = ({ onClose, onFinish }: ImportModalProps) => {
+  const { t } = useTranslation()
+  const { isLoading, setLoading, setError, setSuccess } = useAppStore()
+  // Now syncToTools should be available
+  const { syncToTools } = useSkillsManager()
+
+  const [plan, setPlan] = useState<OnboardingPlan | null>(null)
+  const [selected, setSelected] = useState<Record<string, boolean>>({})
+  const [variantChoice, setVariantChoice] = useState<Record<string, string>>({})
+  const [searchTerm, setSearchTerm] = useState('')
+
+  useEffect(() => {
+    // Load plan on mount
+    const load = async () => {
+      setLoading(true)
+      try {
+        const result = await invoke<OnboardingPlan>('get_onboarding_plan')
+        setPlan(result)
+
+        const defaultSelected: Record<string, boolean> = {}
+        const defaultChoice: Record<string, string> = {}
+        result.groups.forEach((group: any) => {
+          defaultSelected[group.name] = true
+          const first = group.variants[0]
+          if (first) {
+            defaultChoice[group.name] = first.path
+          }
+        })
+        setSelected(defaultSelected)
+        setVariantChoice(defaultChoice)
+        setLoading(false)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err))
+      }
+    }
+    load()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleToggleAll = (checked: boolean) => {
+    if (!plan) return
+    const next: Record<string, boolean> = {}
+    plan.groups.forEach((group: any) => {
+      next[group.name] = checked
+    })
+    setSelected(next)
+  }
+
+  const handleToggleGroup = (groupName: string, checked: boolean) => {
+    setSelected(prev => ({ ...prev, [groupName]: checked }))
+  }
+
+  const handleSelectVariant = (groupName: string, path: string) => {
+    setVariantChoice(prev => ({ ...prev, [groupName]: path }))
+  }
+
+  const handleImport = async () => {
+    if (!plan) return
+    setLoading(true)
+
+    try {
+      const selectedGroups = plan.groups.filter((g: any) => selected[g.name])
+      const total = selectedGroups.length
+      let current = 0
+
+      for (const group of selectedGroups) {
+        current++
+        const selectedPath = variantChoice[group.name]
+        const variant = group.variants.find((v: any) => v.path === selectedPath)
+
+        if (!selectedPath || !variant) continue
+
+        // Extract base path and subpath
+        // For local detection, usually variant.path is the full path.
+        // We need to verify how list_local_skills worked or just use install_local directly if it's a root.
+        // But install_local_selection logic expects basePath + subpath.
+        // For simplicity, let's treat the variant path as the full path to the skill.
+        // We can use `install_local` (cmd: install_local) which takes sourcePath.
+
+        const sourcePath = selectedPath
+
+        setLoading(true, t('actions.importingStep', {
+          current,
+          total,
+          name: group.name
+        }))
+
+        // 1. Install/Import the skill
+        // We use install_local command.
+        const installRes = await invoke<any>('install_local', {
+          sourcePath,
+          name: group.name
+        })
+
+        // 2. Sync to other tools if needed
+        // If the variant was found in tool A, B, C, we might want to sync back to them
+        // to ensure they are linked as "managed" targets.
+        // The group.variants tells us where it was found.
+        const toolsToSync = group.variants
+          .map((v: any) => v.tool)
+        // Filter out tools that are not installed/enabled in our store if we want to be strict,
+        // but usually we want to adopt them all.
+
+        await syncToTools({
+          skill_id: installRes.skill_id,
+          central_path: installRes.central_path,
+          name: installRes.name
+        }, toolsToSync)
+      }
+
+      setSuccess(t('status.importCompleted'))
+      onFinish()
+      onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (!plan) return null
 
   return (
-    <div className="modal-backdrop" onClick={onRequestClose}>
+    <div className="modal-backdrop" onClick={onClose}>
       <div
         className="modal modal-lg modal-discovered"
         onClick={(e) => e.stopPropagation()}
@@ -43,7 +143,7 @@ const ImportModal = ({
           <button
             className="modal-close"
             type="button"
-            onClick={onRequestClose}
+            onClick={onClose}
             aria-label={t('close')}
           >
             ✕
@@ -63,84 +163,90 @@ const ImportModal = ({
                 type="checkbox"
                 checked={
                   plan.groups.length > 0 &&
-                  plan.groups.every((group) => selected[group.name])
+                  plan.groups.every((group: any) => selected[group.name])
                 }
-                onChange={(event) => onToggleAll(event.target.checked)}
+                onChange={(event) => handleToggleAll(event.target.checked)}
               />
               {t('selectAll')}
             </label>
+            <div className="search-input-wrapper">
+              <Search size={14} className="search-icon" />
+              <input
+                type="text"
+                className="search-input"
+                placeholder={t('searchPlaceholder') || '搜索 Skills...'}
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
           </div>
           <div className="groups discovered-list">
-            {plan.groups.map((group) => (
-              <div className="group-card" key={group.name}>
-                <div className="group-title">
-                  <label className="group-select">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(selected[group.name])}
-                      onChange={(event) =>
-                        onToggleGroup(group.name, event.target.checked)
-                      }
-                    />
-                    <span>{group.name}</span>
-                  </label>
-                  {group.has_conflict ? (
-                    <span className="badge danger">{t('conflict')}</span>
-                  ) : (
-                    <span className="badge">{t('consistent')}</span>
-                  )}
-                </div>
-                <div className="group-variants">
-                  {group.variants.map((variant) => (
-                    <div
-                      className="variant-row"
-                      key={`${group.name}-${variant.tool}-${variant.path}`}
-                    >
-                      {group.has_conflict ? (
-                        <input
-                          type="radio"
-                          name={`variant-${group.name}`}
-                          checked={variantChoice[group.name] === variant.path}
-                          onChange={() => onSelectVariant(group.name, variant.path)}
-                        />
-                      ) : (
-                        <span className="variant-spacer" />
-                      )}
-                      <div className="variant-info">
-                        <span className="path">{variant.path}</span>
-                        <span className="found-pill">
-                          {t('foundIn')} {variant.tool}
-                        </span>
+            {plan.groups
+              .filter((group: any) =>
+                searchTerm === '' ||
+                group.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                group.variants.some((v: any) =>
+                  v.path.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                  v.tool.toLowerCase().includes(searchTerm.toLowerCase())
+                )
+              )
+              .map((group: any) => (
+                <div className="group-card" key={group.name}>
+                  <div className="group-title">
+                    <label className="group-select">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(selected[group.name])}
+                        onChange={(event) =>
+                          handleToggleGroup(group.name, event.target.checked)
+                        }
+                      />
+                      <span>{group.name}</span>
+                    </label>
+                    {group.has_conflict ? (
+                      <span className="badge danger">{t('conflict')}</span>
+                    ) : (
+                      <span className="badge">{t('consistent')}</span>
+                    )}
+                  </div>
+                  <div className="group-variants">
+                    {group.variants.map((variant: any) => (
+                      <div
+                        className="variant-row"
+                        key={`${group.name}-${variant.tool}-${variant.path}`}
+                      >
+                        <div className="variant-info">
+                          <label className="variant-label">
+                            <input
+                              type="radio"
+                              checked={variantChoice[group.name] === variant.path}
+                              onChange={() => handleSelectVariant(group.name, variant.path)}
+                            // disabled={!group.has_conflict} // User prefers interaction
+                            />
+                            <span className="variant-path" title={variant.path}>{variant.path}</span>
+                            <span className="variant-tool">{variant.tool}</span>
+                          </label>
+                        </div>
                       </div>
-                      {variant.is_link ? (
-                        <span className="meta">
-                          {t('linkLabel', {
-                            target: variant.link_target ?? t('unknown'),
-                          })}
-                        </span>
-                      ) : (
-                        <span className="meta">{t('directory')}</span>
-                      )}
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
           </div>
         </div>
         <div className="modal-footer">
           <button
             className="btn btn-primary"
-            onClick={onImport}
-            disabled={loading}
+            onClick={handleImport}
+            disabled={isLoading}
           >
             <Download size={14} />
             {t('importAndSync')}
           </button>
           <button
             className="btn btn-secondary"
-            onClick={onRequestClose}
-            disabled={loading}
+            onClick={onClose}
+            disabled={isLoading}
           >
             {t('close')}
           </button>

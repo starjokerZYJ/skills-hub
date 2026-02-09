@@ -1,6 +1,7 @@
 pub mod cache_cleanup;
 pub mod central_repo;
 pub mod content_hash;
+pub mod skill_metadata;
 pub mod git_fetcher;
 pub mod github_search;
 pub mod installer;

@@ -46,13 +46,23 @@ pub fn build_onboarding_plan<R: tauri::Runtime>(
         .into_iter()
         .map(|(tool, path)| managed_target_key(&tool, Path::new(&path)))
         .collect::<std::collections::HashSet<_>>();
-    build_onboarding_plan_in_home(&home, Some(&central), Some(&managed_targets))
+    
+    // Get names of already-managed skills to exclude from onboarding
+    let managed_skill_names: std::collections::HashSet<String> = store
+        .list_skills()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|s| s.name)
+        .collect();
+    
+    build_onboarding_plan_in_home(&home, Some(&central), Some(&managed_targets), Some(&managed_skill_names))
 }
 
 fn build_onboarding_plan_in_home(
     home: &Path,
     exclude_root: Option<&Path>,
     exclude_managed_targets: Option<&std::collections::HashSet<String>>,
+    exclude_managed_names: Option<&std::collections::HashSet<String>>,
 ) -> Result<OnboardingPlan> {
     let adapters = default_tool_adapters();
     let mut all_detected: Vec<DetectedSkill> = Vec::new();
@@ -74,6 +84,13 @@ fn build_onboarding_plan_in_home(
 
     let mut grouped: HashMap<String, Vec<OnboardingVariant>> = HashMap::new();
     for skill in all_detected.iter() {
+        // Skip skills whose name is already managed
+        if let Some(names) = exclude_managed_names {
+            if names.contains(&skill.name) {
+                continue;
+            }
+        }
+        
         let fingerprint = hash_dir(&skill.path).ok();
         let entry = grouped.entry(skill.name.clone()).or_default();
         entry.push(OnboardingVariant {
@@ -105,9 +122,12 @@ fn build_onboarding_plan_in_home(
         })
         .collect();
 
+    // Calculate total_skills_found from the remaining groups
+    let total_skills_found: usize = groups.iter().map(|g| g.variants.len()).sum();
+
     Ok(OnboardingPlan {
         total_tools_scanned: scanned,
-        total_skills_found: all_detected.len(),
+        total_skills_found,
         groups,
     })
 }

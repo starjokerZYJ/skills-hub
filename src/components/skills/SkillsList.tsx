@@ -1,8 +1,9 @@
-import { memo } from 'react'
+import { memo, useState } from 'react'
 import { MessageCircle } from 'lucide-react'
 import type { TFunction } from 'i18next'
 import type { ManagedSkill, OnboardingPlan, ToolOption } from './types'
 import SkillCard from './SkillCard'
+import SkillDetailModal from './modals/SkillDetailModal'
 
 type GithubInfo = {
   label: string
@@ -21,6 +22,7 @@ type SkillsListProps = {
   onUpdateSkill: (skill: ManagedSkill) => void
   onDeleteSkill: (skillId: string) => void
   onToggleTool: (skill: ManagedSkill, toolId: string) => void
+  onSyncAll: (skill: ManagedSkill, sync: boolean) => void
   t: TFunction
 }
 
@@ -36,8 +38,11 @@ const SkillsList = ({
   onUpdateSkill,
   onDeleteSkill,
   onToggleTool,
+  onSyncAll,
   t,
 }: SkillsListProps) => {
+  const [selectedSkill, setSelectedSkill] = useState<ManagedSkill | null>(null)
+
   return (
     <div className="skills-list">
       {plan && plan.total_skills_found > 0 ? (
@@ -80,13 +85,27 @@ const SkillsList = ({
               onUpdate={onUpdateSkill}
               onDelete={onDeleteSkill}
               onToggleTool={onToggleTool}
+              onSyncAll={onSyncAll}
+              onClick={() => setSelectedSkill(skill)}
               t={t}
             />
           ))}
         </>
+      )}
+
+      {selectedSkill && (
+        <SkillDetailModal
+          skill={selectedSkill}
+          installedTools={installedTools}
+          loading={loading}
+          onClose={() => setSelectedSkill(null)}
+          onToggleTool={onToggleTool}
+          t={t}
+        />
       )}
     </div>
   )
 }
 
 export default memo(SkillsList)
+
